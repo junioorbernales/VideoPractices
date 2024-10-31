@@ -31,3 +31,6 @@ i1.print_RGB_values()
 i1.rgb_to_yuv()
 i1.print_YUV_values()
 
+image = ffmpeg.input('image.jpg')
+resize_image = image.output(image, 'output.jpg')
+ffmpeg.run(image)
