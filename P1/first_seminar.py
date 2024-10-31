@@ -34,3 +34,5 @@ i1.print_YUV_values()
 image = ffmpeg.input('image.jpg')
 resize_image = image.output(image, 'output.jpg')
 ffmpeg.run(image)
+
+print("javielmejor")
