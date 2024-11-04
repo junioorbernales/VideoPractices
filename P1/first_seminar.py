@@ -1,6 +1,8 @@
 import ffmpeg
+import numpy as np
+import os
 
-class RGB:
+class Image:
 
     y = 0
     u = 0
@@ -31,15 +33,49 @@ class RGB:
         print("U:", self.u, "\n")
         print("V:", self.v, "\n")
     
-i1 = RGB(100, 50, 255)
+#Exercise 2
+i1 = Image(100, 50, 255)
 i1.print_RGB_values()
 i1.rgb_to_yuv()
 i1.print_YUV_values()
 i1.yuv_to_rgb()
 i1.print_RGB_values()
 
+'''
+#Exercise 3
 image = ffmpeg.input('image.jpg')
 resize_image = image.output(image, 'output.jpg')
 ffmpeg.run(image)
+'''
 
-print("javielmejor")
+#Exercise 4
+#Code taken from (https://stackoverflow.com/questions/57366966/serpentine-scan-pattern-generator)
+def zigzag(dims):
+    r = np.arange(np.prod(dims))
+    out = []
+    for d in dims:
+        out.append(np.abs((1|((d+r)<<1))%(d<<2)-(d<<1))>>1)
+        r //= d
+    return np.transpose(out[::-1])
+###
+
+path = 'coltrane.jpg'
+coltrane = ffmpeg.input(path)
+
+try:
+    probe = ffmpeg.probe(path)
+except ffmpeg.Error as e:
+    print("stdout:", e.stdout.decode('utf-8'))
+    print("stderr:", e.stderr.decode('utf-8'))
+
+'''
+image_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+
+width = int(coltrane['width'])
+height = int(coltrane['height'])
+coltrane_array = (
+    np
+    .frombuffer(coltrane, np.uint8)
+    .reshape([-1, height, width, 3])
+)
+'''
