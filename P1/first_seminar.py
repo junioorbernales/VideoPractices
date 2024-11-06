@@ -59,7 +59,7 @@ def zigzag(dims):
     return np.transpose(out[::-1])
 ###
 
-path = 'coltrane.jpg'
+path = 'video.mp4'
 coltrane = ffmpeg.input(path)
 
 try:
