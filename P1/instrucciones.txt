@@ -1,4 +1,4 @@
-docker build -t fastapi (fastapi == Nombre del contenedor)
+docker build -t fastapi . (fastapi == Nombre del contenedor)
 docker run --rm -it -p 8000:8000 fastapi bash
 
-uvicorn uvicorn P1.practice1:app --reload --host=0.0.0.0 [ejecutar dentro del contenedor]
+uvicorn practice1:app --reload --host=0.0.0.0 [ejecutar dentro del contenedor]
