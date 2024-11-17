@@ -1,4 +1,15 @@
+#PARA API DOCKER
+cd P1
+cd API
+
 docker build -t fastapi . (fastapi == Nombre del contenedor)
 docker run --rm -it -p 8000:8000 fastapi bash
 
 uvicorn practice1:app --reload --host=0.0.0.0 [ejecutar dentro del contenedor]
+
+#PARA FFMPEG DOCKER
+cd P1
+cd ffmpeg
+
+docker build -t ffmpeg-docker .
+docker run -it ffmpeg-docker bash
