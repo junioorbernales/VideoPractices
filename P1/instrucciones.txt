@@ -2,8 +2,9 @@
 cd P1
 cd API
 
-docker build -t fastapi . (fastapi == Nombre del contenedor)
-docker run --rm -it -p 8000:8000 fastapi bash
+#docker build -t fastapi . (fastapi == Nombre del contenedor)
+#docker run --rm -it -p 8000:8000 fastapi bash
+docker run -d --name APIcontainer -p 80:80 fastapi --> ESTE ES EL COMANDO QUE FUNCIONA
 
 uvicorn practice1:app --reload --host=0.0.0.0 [ejecutar dentro del contenedor]
 
