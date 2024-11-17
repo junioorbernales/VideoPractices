@@ -1,11 +1,11 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /P1
 
-COPY requirements.txt .
+COPY ./requirements.txt ./API/requirements.txt 
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "fastapi:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["fastapi", "run", "P1/practice1.py", "--port", "80"]
