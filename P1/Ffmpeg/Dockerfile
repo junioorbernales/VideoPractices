@@ -1,3 +1,3 @@
-FROM python:3.11-slim
+FROM ubuntu:latest
 
 RUN apt-get update && apt-get install -y ffmpeg

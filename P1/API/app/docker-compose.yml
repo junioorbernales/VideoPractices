@@ -1,0 +1,25 @@
+services:
+  fastapi:
+    build:
+      context: ../Dockerfile
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    volumes:
+      - ./app:/app
+    depends_on:
+      - ffmpeg  # Updated to match the service name defined below
+    networks:
+      - app_network
+
+  ffmpeg:  # Ensure this matches the `depends_on` reference
+    image: jrottenberg/ffmpeg:4.4-alpine
+    container_name: ffmpeg-docker
+    stdin_open: true
+    tty: true
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge

@@ -1,25 +1,20 @@
-'''
-%pip3 install fastapi
-%pip3 install "uvicorn[standard]" #Servidor virtual para usar FastAPI
-uvicorn P1.practice1:app --reload para encender el servidor
-'''
-
 from fastapi import FastAPI, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
-import ffmpeg
+from fastapi.responses import FileResponse, JSONResponse
 import numpy as np
 import cv2
+import subprocess
+import shutil
+from tempfile import NamedTemporaryFile
 from scipy.fftpack import dct, idct
-import skimage.io as io
 import pywt
 from typing import List
 import os
 
 app = FastAPI()
 
-# Utility classes and functions
-class ImageProcessor:
-    def __init__(self, r, g, b):
+# Utility class for RGB/YUV conversion
+class Image:
+    def __init__(self, r: int, g: int, b: int):
         self.r = r
         self.g = g
         self.b = b
@@ -39,7 +34,8 @@ class ImageProcessor:
         self.r = 1.164 * (self.y - 16) + 1.596 * (self.v - 128)
         return {"R": self.r, "G": self.g, "B": self.b}
 
-# Zigzag mask
+
+# Zigzag mask for DCT
 def z_scan_mask(C, N):
     mask = np.zeros((N, N))
     mask_m, mask_n = 0, 0
@@ -64,12 +60,13 @@ def z_scan_mask(C, N):
             mask[mask_m, mask_n] = 1
     return mask
 
-# DCT class
+
+# DCT processing class
 class DCT:
     def __init__(self, img):
         self.image = img
 
-    def compress_dct(self, mask, N):
+    def compressDCT(self, mask, N):
         self.image = np.float32(self.image)
         self.img_dct = np.zeros((self.image.shape[0] // N * N, self.image.shape[1] // N * N))
         for m in range(0, self.img_dct.shape[0], N):
@@ -79,59 +76,93 @@ class DCT:
                 iblock = cv2.idct(coeff * mask)
                 self.img_dct[m:m + N, n:n + N] = iblock
 
-# Routes
+class DWT:
+    def __init__(self, image):
+        self.image = image
+
+    def compressDWT(self, N):
+        self.image = np.float32(self.image)
+        self.img_dwt = np.zeros((self.image.shape[0] // N * N, self.image.shape[1] // N * N))
+        for m in range(0, self.img_dwt.shape[0], N):
+            for n in range(0, self.img_dwt.shape[1], N):
+                block = self.image[m:m + N, n:n + N]
+                coeffs = pywt.dwt2(block, 'db1')  # Perform DWT
+                iblock = pywt.idwt2(coeffs, 'db1')  # Perform inverse DWT
+                self.img_dwt[m:m + N, n:n + N] = iblock
+
+# FastAPI endpoints
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the FastAPI image processing app"}
 
+
 @app.post("/convert-to-yuv/")
 def convert_to_yuv(r: int, g: int, b: int):
-    processor = ImageProcessor(r, g, b)
+    processor = Image(r, g, b)
     return processor.rgb_to_yuv()
+
 
 @app.post("/convert-to-rgb/")
 def convert_to_rgb(y: float, u: float, v: float):
-    processor = ImageProcessor(0, 0, 0)
+    processor = Image(0, 0, 0)
     processor.y, processor.u, processor.v = y, u, v
     return processor.yuv_to_rgb()
+
 
 @app.post("/resize-image/")
 async def resize_image(file: UploadFile, width: int, height: int):
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
         raise HTTPException(status_code=400, detail="File must be an image")
-    output_path = f"resized_{file.filename}"
+
+    # Save the uploaded file temporarily
+    with NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_input:
+        shutil.copyfileobj(file.file, temp_input)
+        input_path = temp_input.name
+
+    output_path = f"/tmp/resized_{file.filename}"
+
     try:
-        (
-            ffmpeg
-            .input(file.file)
-            .filter("scale", width, height)
-            .output(output_path)
-            .run()
+        # Call FFmpeg inside the `ffmpeg-docker` container
+        subprocess.run(
+            [
+                "docker", "exec", "ffmpeg-docker",
+                "ffmpeg", "-i", input_path,
+                "-vf", f"scale={width}:{height}",
+                output_path
+            ],
+            check=True
         )
         return FileResponse(output_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)
+
 
 @app.post("/compress-dct/")
 async def compress_dct(file: UploadFile, c: int, n: int):
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
         raise HTTPException(status_code=400, detail="File must be an image")
+
     try:
-        img = io.imread(file.file, as_gray=True)
+        img = cv2.imdecode(np.frombuffer(await file.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
         mask = z_scan_mask(c, n)
         dct_processor = DCT(img)
-        dct_processor.compress_dct(mask, n)
-        compressed_img_path = f"compressed_{file.filename}"
+        dct_processor.compressDCT(mask, n)
+        compressed_img_path = f"/tmp/compressed_{file.filename}"
         cv2.imwrite(compressed_img_path, dct_processor.img_dct)
         return FileResponse(compressed_img_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/run-length-encode/")
 def run_length_encode(bits_chain: List[int]):
+    length = len(bits_chain)
     encoding = ""
     i = 0
-    length = len(bits_chain)
     while i < length:
         count = 1
         while i + 1 < length and bits_chain[i] == bits_chain[i + 1]:
@@ -140,3 +171,27 @@ def run_length_encode(bits_chain: List[int]):
         encoding += str(bits_chain[i]) + str(count)
         i += 1
     return {"encoded": encoding}
+
+@app.post("/compress-dwt/")
+async def compress_dwt(file: UploadFile, n: int):
+    """
+    Compress an image using Discrete Wavelet Transform (DWT).
+    """
+    if not file.filename.endswith((".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    try:
+        # Read the image from the uploaded file
+        img = cv2.imdecode(np.frombuffer(await file.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+        
+        # Apply DWT compression
+        dwt_processor = DWT(img)
+        dwt_processor.compressDWT(n)
+
+        # Save the compressed image
+        compressed_img_path = f"/tmp/compressed_dwt_{file.filename}"
+        cv2.imwrite(compressed_img_path, dwt_processor.img_dwt)
+
+        return FileResponse(compressed_img_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
