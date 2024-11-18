@@ -16,3 +16,6 @@ docker build -t ffmpeg-image .
 docker run -it --name ffmpeg-docker ffmpeg-image bash #bash es para interactuar con el container
 docker container start [container name] #ejecutar container ya existente
 docker container stop [container name] #parar container ya existente
+
+
+    image: jrottenberg/ffmpeg:4.4-alpine
