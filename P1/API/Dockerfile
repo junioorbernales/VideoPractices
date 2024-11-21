@@ -6,6 +6,16 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install necessary tools
+RUN apt-get update && apt-get install -y docker.io
+RUN apt-get update && apt-get install -y iputils-ping
+
+# Add a new user and assign it to the docker group
+RUN groupadd docker && useradd -m -g docker dockeruser
+
+# Switch to the new user
+USER dockeruser
+
 WORKDIR /app
 
 COPY requirements.txt .

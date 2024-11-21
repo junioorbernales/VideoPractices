@@ -7,11 +7,10 @@ services:
       - "8000:80"
     volumes:
       - ./app:/app
-    depends_on:
-      - ffmpeg  # Reference the existing service name
+      - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket
     networks:
-      - api-ffmpeg
+      - api-ffmpeg  # Shared network for communication
 
 networks:
   api-ffmpeg:
-    external: true  # Use the existing network
+    external: true  # Use an existing network

@@ -2,7 +2,7 @@
 cd P1
 cd API
 
-#docker build -t fastapi . (fastapi == Nombre del contenedor)
+docker build -t fastapi . (fastapi == Nombre del contenedor)
 #docker run --rm -it -p 8000:8000 fastapi bash
 docker run -d --name APIcontainer -p 80:80 fastapi --> ESTE ES EL COMANDO QUE FUNCIONA
 
@@ -27,6 +27,8 @@ docker network create [Nombre red] -_> nombre red = api-ffpmeg
 docker run -d --name <CONTAINER_NAME> --network api-ffmpeg <IMAGE_NAME>
 - api-fastapi -> IMAGE_NAME
 - api-docker -> DOCKER_NAME
+docker network connect api-ffmpeg api-docker
 
 - ffmpeg-image -> IMAGE_NAME
 - ffmpeg-docker -> DOCKER_NAME
+docker network connect api-ffmpeg ffmpeg-docker
