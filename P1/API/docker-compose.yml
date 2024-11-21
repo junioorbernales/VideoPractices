@@ -8,18 +8,10 @@ services:
     volumes:
       - ./app:/app
     depends_on:
-      - ffmpeg  # Updated to match the service name defined below
-    networks:
-      - api-ffmpeg
-
-  ffmpeg:  # Ensure this matches the `depends_on` reference
-    image: ffmpeg-image
-    container_name: ffmpeg-docker
-    stdin_open: true
-    tty: true
+      - ffmpeg  # Reference the existing service name
     networks:
       - api-ffmpeg
 
 networks:
   api-ffmpeg:
-    driver: bridge
+    external: true  # Use the existing network
