@@ -17,5 +17,16 @@ docker run -it --name ffmpeg-docker ffmpeg-image bash #bash es para interactuar 
 docker container start [container name] #ejecutar container ya existente
 docker container stop [container name] #parar container ya existente
 
+docker rm [container-name]
+
 
     image: jrottenberg/ffmpeg:4.4-alpine
+
+#Para crear la aplicación con multi-container
+docker network create [Nombre red] -_> nombre red = api-ffpmeg
+docker run -d --name <CONTAINER_NAME> --network api-ffmpeg <IMAGE_NAME>
+- api-fastapi -> IMAGE_NAME
+- api-docker -> DOCKER_NAME
+
+- ffmpeg-image -> IMAGE_NAME
+- ffmpeg-docker -> DOCKER_NAME

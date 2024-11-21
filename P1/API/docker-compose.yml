@@ -10,7 +10,7 @@ services:
     depends_on:
       - ffmpeg  # Updated to match the service name defined below
     networks:
-      - app_network
+      - api-ffmpeg
 
   ffmpeg:  # Ensure this matches the `depends_on` reference
     image: ffmpeg-image
@@ -18,8 +18,8 @@ services:
     stdin_open: true
     tty: true
     networks:
-      - app_network
+      - api-ffmpeg
 
 networks:
-  app_network:
+  api-ffmpeg:
     driver: bridge
