@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   fastapi:
     build:
@@ -8,11 +10,11 @@ services:
     volumes:
       - ./app:/app
     depends_on:
-      - ffmpeg  # Updated to match the service name defined below
+      - ffmpeg  # Se asegura que el servicio ffmpeg esté disponible
     networks:
       - app_network
 
-  ffmpeg:  # Ensure this matches the `depends_on` reference
+  ffmpeg:
     image: ffmpeg-image
     container_name: ffmpeg-docker
     stdin_open: true

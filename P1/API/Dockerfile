@@ -8,10 +8,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements.txt .  # Copia el archivo requirements.txt
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
+# Copia todo el contenido del proyecto en la estructura de directorios correcta
 COPY . .
 
-CMD ["uvicorn", "practice1:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
+CMD ["uvicorn", "API.app.practice1:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
