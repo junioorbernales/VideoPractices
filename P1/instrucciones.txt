@@ -32,3 +32,5 @@ docker network connect api-ffmpeg api-docker
 - ffmpeg-image -> IMAGE_NAME
 - ffmpeg-docker -> DOCKER_NAME
 docker network connect api-ffmpeg ffmpeg-docker
+
+docker compose up --no-recreate --build
