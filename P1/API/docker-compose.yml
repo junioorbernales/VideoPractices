@@ -1,16 +1,22 @@
 services:
-  fastapi:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  api-docker:
+    build: ../API
     ports:
       - "8000:80"
     volumes:
       - ./app:/app
       - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket
+      - ./shared:/shared  # Mount the host `shared` folder into the container
     networks:
-      - api-ffmpeg  # Shared network for communication
+      - api-ffmpeg
+
+  ffmpeg-docker:
+    build: ../ffmpeg
+    volumes:
+      - ./shared:/shared  # Mount the same host `shared` folder here
+    networks:
+      - api-ffmpeg
 
 networks:
   api-ffmpeg:
-    external: true  # Use an existing network
+    driver: bridge

@@ -9,6 +9,7 @@ from scipy.fftpack import dct, idct
 import pywt
 from typing import List
 import os
+import logging
 
 app = FastAPI()
 
@@ -114,31 +115,35 @@ def convert_to_rgb(y: float, u: float, v: float):
 async def resize_image(file: UploadFile, width: int, height: int):
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
         raise HTTPException(status_code=400, detail="File must be an image")
-
-    # Save the uploaded file temporarily
-    with NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_input:
-        shutil.copyfileobj(file.file, temp_input)
-        input_path = temp_input.name
-
-    output_path = f"/tmp/resized_{file.filename}"
-
+    
     try:
-        # Call FFmpeg inside the `ffmpeg-docker` container
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/resized_{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Run FFmpeg inside the ffmpeg-docker container
         subprocess.run(
             [
-                "docker", "exec", "ffmpeg-docker",
+                "docker", "exec", "api-ffmpeg-docker-1",
                 "ffmpeg", "-i", input_path,
                 "-vf", f"scale={width}:{height}",
                 output_path
             ],
             check=True
         )
+
+        # Return the resized image
         return FileResponse(output_path)
+
     except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
-    finally:
-        if os.path.exists(input_path):
-            os.remove(input_path)
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
 
 
 @app.post("/compress-dct/")
