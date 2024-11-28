@@ -10,6 +10,7 @@ import pywt
 from typing import List
 import os
 import logging
+import json
 
 app = FastAPI()
 
@@ -226,6 +227,55 @@ async def chroma_subsampling(file: UploadFile, request: str):
 
         # Return the resized image
         return FileResponse(output_path)
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
+@app.post("/video-info")
+async def video_info(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a valid video")
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/chroma_modified_{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Run FFmpeg inside the ffmpeg-docker container
+        result = subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration:stream=codec_name,width,height,r_frame_rate,bit_rate",
+                "-print_format", "json",
+                input_path
+            ],
+            check=True
+        )
+
+        metadata = json.loads(result.stderr)
+
+        # Extract relevant data
+        video_stream = next((stream for stream in metadata.get("streams", []) if stream.get("codec_type") == "video"), None)
+        if not video_stream:
+            raise HTTPException(status_code=400, detail="No video stream found in the file")
+        
+        video_info = {
+            "codec_name": video_stream.get("codec_name"),
+            "width": video_stream.get("width"),
+            "height": video_stream.get("height"),
+            "frame_rate": video_stream.get("r_frame_rate"),
+            "bit_rate": video_stream.get("bit_rate"),
+            "duration": metadata.get("format", {}).get("duration")
+        }
+
+        # Return the video information
+        return {"video_info": video_info}
 
     except subprocess.CalledProcessError as e:
         logging.error(f"FFmpeg failed: {str(e)}")
