@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, File
 from fastapi.responses import FileResponse, JSONResponse
 import numpy as np
 import cv2
@@ -10,6 +10,9 @@ import pywt
 from typing import List
 import os
 import logging
+import ffmpeg
+from pydantic import BaseModel
+
 
 app = FastAPI()
 
@@ -200,3 +203,41 @@ async def compress_dwt(file: UploadFile, n: int):
         return FileResponse(compressed_img_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/resize-video/")
+async def resize_video(
+    file: UploadFile = File(...),
+    width: int = 1280,
+    height: int = 720
+):
+    # Validar el tipo de archivo
+    if not file.filename.endswith((".mp4", ".mov", ".avi", ".mkv")):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un video (mp4, mov, avi, mkv)")
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/resized_{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Construir y ejecutar el comando ffmpeg
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffmpeg",
+            "-i", input_path,
+            "-vf", f"scale={width}:{height}",
+            output_path
+        ]
+        subprocess.run(command, check=True)
+
+        # Retornar el archivo procesado al cliente
+        return FileResponse(
+            output_path,
+            media_type="video/mp4",
+            filename=f"resized_{file.filename}"
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar el video: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error desconocido: {str(e)}")
