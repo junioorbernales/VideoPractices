@@ -200,3 +200,36 @@ async def compress_dwt(file: UploadFile, n: int):
         return FileResponse(compressed_img_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/modify-chroma-subsampling")
+async def chroma_subsampling(file: UploadFile, request: str):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+    
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/chroma_modified_{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Run FFmpeg inside the ffmpeg-docker container
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", input_path,
+                "-vf", f"format={request}",
+                output_path
+            ],
+            check=True
+        )
+
+        # Return the resized image
+        return FileResponse(output_path)
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
