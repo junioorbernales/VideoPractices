@@ -12,6 +12,7 @@ import os
 import logging
 import ffmpeg
 from pydantic import BaseModel
+import json
 
 
 app = FastAPI()
@@ -271,6 +272,56 @@ async def chroma_subsampling(file: UploadFile, request: str):
     except subprocess.CalledProcessError as e:
         logging.error(f"FFmpeg failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
+
+
+@app.post("/video-info")
+async def video_info(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    try:
+        input_path = f"/shared/{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Run FFprobe to get video information
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffprobe", "-v", "error",
+            "-show_entries", "format:stream", 
+            "-select_streams", "v:0",  
+            "-print_format", "json",
+            input_path
+        ]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+
+        # Parse the FFprobe JSON output
+        video_info = json.loads(result.stdout)
+
+        # Extract at least 5 relevant details from the video
+        format_info = video_info.get("format", {})
+        stream_info = video_info.get("streams", [{}])[0]  # First video stream
+
+        response_data = {
+            "filename": format_info.get("filename"),
+            "duration": float(format_info.get("duration", 0)),
+            "size": int(format_info.get("size", 0)),
+            "bitrate": int(format_info.get("bit_rate", 0)),
+            "width": stream_info.get("width"),
+            "height": stream_info.get("height"),
+            "codec": stream_info.get("codec_name"),
+            "fps": eval(stream_info.get("avg_frame_rate", "0/1"))  # Convert fraction to float
+        }
+
+        return JSONResponse(content=response_data)
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFprobe failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail=f"FFprobe error: {e.stderr}")
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
