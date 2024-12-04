@@ -401,3 +401,43 @@ async def process_bbb(file: UploadFile):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.post("/count-tracks")
+async def count_tracks(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Use FFprobe to count the tracks (no filtering of streams)
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffprobe", "-v", "error",
+            "-show_entries", "stream=index",
+            "-print_format", "json",
+            input_path
+        ]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+
+        # Parse the FFprobe JSON output
+        ffprobe_data = json.loads(result.stdout)
+        streams = ffprobe_data.get("streams", [])
+
+        # Debugging: Check the raw output
+        logging.info(f"FFprobe output: {json.dumps(ffprobe_data, indent=4)}")
+
+        # Count the number of tracks
+        track_count = len(streams)
+
+        return JSONResponse(content={"filename": file.filename, "track_count": track_count})
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFprobe command failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail="FFprobe processing error.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
