@@ -403,3 +403,133 @@ async def process_bbb(file: UploadFile):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+
+###REVISAR###
+
+@app.post("/count-tracks")
+async def count_tracks(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Use FFprobe to count the tracks (without restricting to video/audio only)
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffprobe", "-v", "error",  # Suppress verbose output
+            "-show_entries", "stream=index,codec_type",  # Include codec type info for streams
+            "-print_format", "json",  # Output in JSON format
+            input_path
+        ]
+        
+        # Execute the FFprobe command
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+
+        # Parse the FFprobe JSON output
+        ffprobe_data = json.loads(result.stdout)
+        streams = ffprobe_data.get("streams", [])
+
+        # Debugging: Log the raw output for analysis
+        logging.info(f"FFprobe raw output: {json.dumps(ffprobe_data, indent=4)}")
+
+        # Count the number of tracks (video, audio, and others)
+        track_count = len(streams)
+
+        return JSONResponse(content={"filename": file.filename, "track_count": track_count})
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFprobe command failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail="FFprobe processing error.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+#used: https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
+@app.post("/visualize-macroblocks-motion")
+async def visualize_macroblocks_motion(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/macroblocks_motion_{file.filename}"
+
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Use FFmpeg to generate a video with macroblocks and motion vectors visualization
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffmpeg", "-flags2", "+export_mvs",  # Export motion vectors
+            "-i", input_path,
+            "-vf", "codecview=mv=pf+bf+bb",  # Visualize motion vectors with 'pf', 'bf', 'bb' options
+            "-an",  # No audio
+            "-y",  # Overwrite output file
+            output_path
+        ]
+        
+        # Execute the FFmpeg command
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+
+        # Check if FFmpeg ran successfully
+        if result.returncode != 0:
+            logging.error(f"FFmpeg error: {result.stderr}")
+            raise HTTPException(status_code=500, detail="FFmpeg processing error.")
+
+        # Return the video with macroblocks and motion vectors visualization
+        return FileResponse(output_path)
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg command failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail="FFmpeg processing error.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+    
+#used: https://trac.ffmpeg.org/wiki/Histogram
+@app.post("/visualize-histogram")
+async def visualize_histogram(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/histogram_{file.filename}"
+
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Use FFmpeg to generate a video with the histogram overlay
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffmpeg", "-i", input_path,
+            "-vf", "split=2[a][b],[b]histogram,format=yuva444p[hh],[a][hh]overlay",
+            "-an",  # No audio
+            "-y",   # Overwrite output file
+            output_path
+        ]
+
+        # Execute the FFmpeg command
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+
+        # Check if FFmpeg ran successfully
+        if result.returncode != 0:
+            logging.error(f"FFmpeg error: {result.stderr}")
+            raise HTTPException(status_code=500, detail="FFmpeg processing error.")
+
+        # Return the video with histogram overlay
+        return FileResponse(output_path)
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg command failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail="FFmpeg processing error.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
