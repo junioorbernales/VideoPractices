@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse, JSONResponse
 import numpy as np
 import cv2
 import subprocess
+from subprocess import PIPE
+import subprocess as sp
 import shutil
 from tempfile import NamedTemporaryFile
 from scipy.fftpack import dct, idct
@@ -235,6 +237,7 @@ async def chroma_subsampling(file: UploadFile, request: str):
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
+'''
 @app.post("/video-info")
 async def video_info(file: UploadFile):
     if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
@@ -242,23 +245,19 @@ async def video_info(file: UploadFile):
     try:
         # Save the uploaded file to the shared volume
         input_path = f"/shared/{file.filename}"
-        output_path = f"/shared/chroma_modified_{file.filename}"
         with open(input_path, "wb") as temp_file:
             shutil.copyfileobj(file.file, temp_file)
 
         # Run FFmpeg inside the ffmpeg-docker container
-        result = subprocess.run(
-            [
-                "docker", "exec", "api-ffmpeg-docker-1",
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration:stream=codec_name,width,height,r_frame_rate,bit_rate",
-                "-print_format", "json",
-                input_path
-            ],
-            check=True
-        )
-
-        metadata = json.loads(result.stderr)
+        result = ["docker", "exec", "api-ffmpeg-docker-1",
+                "ffprobe", "-v", "quiet",
+                     "-print_format", "json",
+                     "-show_format",
+                     "-show_streams",
+                input_path]
+        
+        pipe = subprocess.run(result, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        metadata = json.loads(pipe.stdout)
 
         # Extract relevant data
         video_stream = next((stream for stream in metadata.get("streams", []) if stream.get("codec_type") == "video"), None)
@@ -283,3 +282,4 @@ async def video_info(file: UploadFile):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
+'''
