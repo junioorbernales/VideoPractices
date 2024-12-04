@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, File
 from fastapi.responses import FileResponse, JSONResponse
 import numpy as np
 import cv2
@@ -12,7 +12,10 @@ import pywt
 from typing import List
 import os
 import logging
+import ffmpeg
+from pydantic import BaseModel
 import json
+
 
 app = FastAPI()
 
@@ -203,7 +206,45 @@ async def compress_dwt(file: UploadFile, n: int):
         return FileResponse(compressed_img_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/resize-video/")
+async def resize_video(
+    file: UploadFile = File(...),
+    width: int = 1280,
+    height: int = 720
+):
+    # Validar el tipo de archivo
+    if not file.filename.endswith((".mp4", ".mov", ".avi", ".mkv")):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un video (mp4, mov, avi, mkv)")
 
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        output_path = f"/shared/resized_{file.filename}"
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        # Construir y ejecutar el comando ffmpeg
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffmpeg",
+            "-i", input_path,
+            "-vf", f"scale={width}:{height}",
+            output_path
+        ]
+        subprocess.run(command, check=True)
+
+        # Retornar el archivo procesado al cliente
+        return FileResponse(
+            output_path,
+            media_type="video/mp4",
+            filename=f"resized_{file.filename}"
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar el video: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error desconocido: {str(e)}")
+    
 @app.post("/modify-chroma-subsampling")
 async def chroma_subsampling(file: UploadFile, request: str):
     if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
@@ -237,49 +278,128 @@ async def chroma_subsampling(file: UploadFile, request: str):
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
-'''
+
+
 @app.post("/video-info")
 async def video_info(file: UploadFile):
     if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
-        raise HTTPException(status_code=400, detail="File must be a valid video")
+        raise HTTPException(status_code=400, detail="File must be a video")
+
     try:
-        # Save the uploaded file to the shared volume
         input_path = f"/shared/{file.filename}"
         with open(input_path, "wb") as temp_file:
             shutil.copyfileobj(file.file, temp_file)
 
-        # Run FFmpeg inside the ffmpeg-docker container
-        result = ["docker", "exec", "api-ffmpeg-docker-1",
-                "ffprobe", "-v", "quiet",
-                     "-print_format", "json",
-                     "-show_format",
-                     "-show_streams",
-                input_path]
-        
-        pipe = subprocess.run(result, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        metadata = json.loads(pipe.stdout)
+        command = [
+            "docker", "exec", "api-ffmpeg-docker-1",
+            "ffprobe", "-v", "error",
+            "-show_entries", "format:stream", 
+            "-select_streams", "v:0",  
+            "-print_format", "json",
+            input_path
+        ]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+        video_info = json.loads(result.stdout)
 
-        # Extract relevant data
-        video_stream = next((stream for stream in metadata.get("streams", []) if stream.get("codec_type") == "video"), None)
-        if not video_stream:
-            raise HTTPException(status_code=400, detail="No video stream found in the file")
-        
-        video_info = {
-            "codec_name": video_stream.get("codec_name"),
-            "width": video_stream.get("width"),
-            "height": video_stream.get("height"),
-            "frame_rate": video_stream.get("r_frame_rate"),
-            "bit_rate": video_stream.get("bit_rate"),
-            "duration": metadata.get("format", {}).get("duration")
+        format_info = video_info.get("format", {})
+        stream_info = video_info.get("streams", [{}])[0] 
+
+        response_data = {
+            "filename": format_info.get("filename"),
+            "duration": float(format_info.get("duration", 0)),
+            "size": int(format_info.get("size", 0)),
+            "bitrate": int(format_info.get("bit_rate", 0)),
+            "width": stream_info.get("width"),
+            "height": stream_info.get("height"),
+            "codec": stream_info.get("codec_name"),
+            "fps": eval(stream_info.get("avg_frame_rate", "0/1"))
         }
 
-        # Return the video information
-        return {"video_info": video_info}
+        return JSONResponse(content=response_data)
 
     except subprocess.CalledProcessError as e:
-        logging.error(f"FFmpeg failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+        logging.error(f"FFprobe failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail=f"FFprobe error: {e.stderr}")
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
-'''
+    
+@app.post("/process-bbb")
+async def process_bbb(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+    
+    try:
+        #Paths
+        input_path = f"/shared/{file.filename}"
+        video_output_path = "/shared/bbb_20s.mp4"
+        audio_aac_path = "/shared/bbb_20s_aac.m4a"
+        audio_mp3_path = "/shared/bbb_20s_mp3.mp3"
+        audio_ac3_path = "/shared/bbb_20s_ac3.ac3"
+        packaged_output_path = "/shared/bbb_20s_packaged.mp4"
+
+        #Save the uploaded file to the shared folder
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+
+        #Step 1: Cut the video to 20 seconds
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", input_path,
+                "-t", "20", "-c:v", "copy", "-c:a", "copy", video_output_path
+            ],
+            check=True
+        )
+
+        #Step 2: Export audio in AAC mono
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", video_output_path,
+                "-vn", "-acodec", "aac", "-ac", "1", audio_aac_path
+            ],
+            check=True
+        )
+
+        #Step 3: Export audio in MP3 stereo with lower bitrate
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", video_output_path,
+                "-vn", "-acodec", "libmp3lame", "-ac", "2", "-b:a", "96k", audio_mp3_path
+            ],
+            check=True
+        )
+
+        #Step 4: Export audio in AC3 codec
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", video_output_path,
+                "-vn", "-acodec", "ac3", audio_ac3_path
+            ],
+            check=True
+        )
+
+        #Step 5: Package everything into a single MP4
+        subprocess.run(
+            [
+                "docker", "exec", "api-ffmpeg-docker-1",
+                "ffmpeg", "-i", video_output_path,
+                "-i", audio_aac_path, "-i", audio_mp3_path, "-i", audio_ac3_path,
+                "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-map", "3:a:0",
+                "-c:v", "copy", "-c:a", "copy", packaged_output_path
+            ],
+            check=True
+        )
+
+        #Return the packaged file
+        return FileResponse(packaged_output_path, media_type="video/mp4", filename="bbb_20s_packaged.mp4")
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg command failed: {e.stderr}")
+        raise HTTPException(status_code=500, detail="FFmpeg processing error.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
