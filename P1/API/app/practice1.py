@@ -536,6 +536,7 @@ async def visualize_histogram(file: UploadFile):
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
+#Code for Drop-Down List (https://github.com/fastapi/fastapi/discussions/9266)
 class VideoFormat(str, Enum):
     VP8 = "vp8"
     VP9 = "vp9"
@@ -550,6 +551,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
     
     filename_without_extension = os.path.splitext(file.filename)[0]
 
+    #Code taken from (https://superuser.com/questions/1280255/vp8-single-pass-conversion-with-good-quality-in-ffmpeg)
     if format.value == "vp8":
         try:
             #Paths
@@ -582,6 +584,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             logging.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
+    #Code taken from (https://superuser.com/questions/705579/convert-video-with-vp9-codec-using-ffmpeg)
     if format.value == "vp9":
         try:
             #Paths
@@ -613,6 +616,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             logging.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
+    #Code taken from (https://superuser.com/questions/785528/how-to-generate-an-mp4-with-h-265-codec-using-ffmpeg)
     if format.value == "h265":
         try:
             #Paths
@@ -645,6 +649,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             logging.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred")
     
+    #Code taken from (https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Ffmpeg.md)
     if format.value == "av1":
         try:
             #Paths
@@ -677,6 +682,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             logging.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred")
         
+#Code taken from (https://www.youtube.com/watch?v=sN-mSC1ohKI)
 @app.post("/encoding-ladder")
 async def encoding_ladder(file: UploadFile):
     if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
