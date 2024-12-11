@@ -15,6 +15,7 @@ import logging
 import ffmpeg
 from pydantic import BaseModel
 import json
+from enum import Enum
 
 
 app = FastAPI()
@@ -533,3 +534,142 @@ async def visualize_histogram(file: UploadFile):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+class VideoFormat(str, Enum):
+    VP8 = "vp8"
+    VP9 = "vp9"
+    H265 = "h265"
+    AV1 = "av1"
+
+
+@app.post("/convert_to")
+async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+    
+    if format.value == "vp8":
+        try:
+            #Paths
+            input_path = f"/shared/{file.filename}"
+            vp8_path = "/shared/output_vp8.webm"
+
+            #Save the uploaded file to the shared folder
+            with open(input_path, "wb") as temp_file:
+                shutil.copyfileobj(file.file, temp_file)
+
+            #Export video in AP1 format
+            subprocess.run(
+                [
+                    "docker", "exec", "api-ffmpeg-docker-1",
+                    "ffmpeg", "-i", input_path,
+                    "-c:v", "libvpx", "-crf", "30", "-b:v", 
+                    "0", "-c:a", "libopus", "-b:a", "64k", "-vbr", "on",
+                    vp8_path
+                ],
+                check=True
+            )
+            
+            #Return the packaged file
+            return FileResponse(vp8_path, media_type="video/webm", filename="output_vp8.webm")
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"FFmpeg failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
+    if format.value == "vp9":
+        try:
+            #Paths
+            input_path = f"/shared/{file.filename}"
+            vp9_path = "/shared/output_vp9.webm"
+
+            #Save the uploaded file to the shared folder
+            with open(input_path, "wb") as temp_file:
+                shutil.copyfileobj(file.file, temp_file)
+
+            #Export video in AP1 format
+            subprocess.run(
+                [
+                    "docker", "exec", "api-ffmpeg-docker-1",
+                    "ffmpeg", "-i", input_path,
+                    "-c:v", "libvpx-vp9", "-c:a", "libopus",
+                    vp9_path
+                ],
+                check=True
+            )
+            
+            #Return the packaged file
+            return FileResponse(vp9_path, media_type="video/webm", filename="output_vp9.webm")
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"FFmpeg failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
+    if format.value == "h265":
+        try:
+            #Paths
+            input_path = f"/shared/{file.filename}"
+            h265_path = "/shared/output_h265.mkv"
+
+            #Save the uploaded file to the shared folder
+            with open(input_path, "wb") as temp_file:
+                shutil.copyfileobj(file.file, temp_file)
+
+            #Export video in AP1 format
+            subprocess.run(
+                [
+                    "docker", "exec", "api-ffmpeg-docker-1",
+                    "ffmpeg", "-i", input_path,
+                    "-c:v", "libx265", "-crf", "26", "-preset", 
+                    "fast", "-c:a", "aac", "-b:a", "128k",
+                    h265_path
+                ],
+                check=True
+            )
+            
+            #Return the packaged file
+            return FileResponse(h265_path, media_type="video/mp4", filename="output_h265.mkv")
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"FFmpeg failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail="An unexpected error occurred")
+    
+    if format.value == "av1":
+        try:
+            #Paths
+            input_path = f"/shared/{file.filename}"
+            av1_path = "/shared/output_av1.mkv"
+
+            #Save the uploaded file to the shared folder
+            with open(input_path, "wb") as temp_file:
+                shutil.copyfileobj(file.file, temp_file)
+
+            #Export video in AP1 format
+            subprocess.run(
+                [
+                    "docker", "exec", "api-ffmpeg-docker-1",
+                    "ffmpeg", "-i", input_path,
+                    "-c:v", "libsvtav1", "-preset", "10", "-crf", 
+                    "35", "-c:a", "copy",
+                    av1_path
+                ],
+                check=True
+            )
+            
+            #Return the packaged file
+            return FileResponse(av1_path, media_type="video/mkv", filename="output_av1.mkv")
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"FFmpeg failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail="An unexpected error occurred")
