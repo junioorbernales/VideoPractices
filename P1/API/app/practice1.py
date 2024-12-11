@@ -16,6 +16,7 @@ import ffmpeg
 from pydantic import BaseModel
 import json
 from enum import Enum
+import zipfile
 
 
 app = FastAPI()
@@ -542,16 +543,18 @@ class VideoFormat(str, Enum):
     AV1 = "av1"
 
 
-@app.post("/convert_to")
+@app.post("/convert-to")
 async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
     if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
         raise HTTPException(status_code=400, detail="File must be a video")
     
+    filename_without_extension = os.path.splitext(file.filename)[0]
+
     if format.value == "vp8":
         try:
             #Paths
             input_path = f"/shared/{file.filename}"
-            vp8_path = "/shared/output_vp8.webm"
+            vp8_path = f"/shared/{filename_without_extension}_vp8.webm"
 
             #Save the uploaded file to the shared folder
             with open(input_path, "wb") as temp_file:
@@ -570,7 +573,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             )
             
             #Return the packaged file
-            return FileResponse(vp8_path, media_type="video/webm", filename="output_vp8.webm")
+            return FileResponse(vp8_path, media_type="video/webm", filename=f"{filename_without_extension}_vp8.webm")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"FFmpeg failed: {str(e)}")
@@ -583,7 +586,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
         try:
             #Paths
             input_path = f"/shared/{file.filename}"
-            vp9_path = "/shared/output_vp9.webm"
+            vp9_path = f"/shared/{filename_without_extension}.webm"
 
             #Save the uploaded file to the shared folder
             with open(input_path, "wb") as temp_file:
@@ -601,7 +604,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             )
             
             #Return the packaged file
-            return FileResponse(vp9_path, media_type="video/webm", filename="output_vp9.webm")
+            return FileResponse(vp9_path, media_type="video/webm", filename=f"{filename_without_extension}_vp9.webm")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"FFmpeg failed: {str(e)}")
@@ -614,7 +617,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
         try:
             #Paths
             input_path = f"/shared/{file.filename}"
-            h265_path = "/shared/output_h265.mkv"
+            h265_path = f"/shared/{filename_without_extension}_h265.mkv"
 
             #Save the uploaded file to the shared folder
             with open(input_path, "wb") as temp_file:
@@ -633,7 +636,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             )
             
             #Return the packaged file
-            return FileResponse(h265_path, media_type="video/mp4", filename="output_h265.mkv")
+            return FileResponse(h265_path, media_type="video/mp4", filename=f"{filename_without_extension}_h265.mkv")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"FFmpeg failed: {str(e)}")
@@ -646,7 +649,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
         try:
             #Paths
             input_path = f"/shared/{file.filename}"
-            av1_path = "/shared/output_av1.mkv"
+            av1_path = f"/shared/{filename_without_extension}_av1.mkv"
 
             #Save the uploaded file to the shared folder
             with open(input_path, "wb") as temp_file:
@@ -665,7 +668,7 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
             )
             
             #Return the packaged file
-            return FileResponse(av1_path, media_type="video/mkv", filename="output_av1.mkv")
+            return FileResponse(av1_path, media_type="video/mkv", filename=f"{filename_without_extension}_av1.mkv")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"FFmpeg failed: {str(e)}")
@@ -673,3 +676,56 @@ async def convert_to(file: UploadFile, format: VideoFormat = VideoFormat.VP8):
         except Exception as e:
             logging.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred")
+        
+@app.post("/encoding-ladder")
+async def encoding_ladder(file: UploadFile):
+    if not file.filename.endswith((".mp4", ".mkv", ".avi", ".mov")):
+        raise HTTPException(status_code=400, detail="File must be a video")
+    
+    filename_without_extension = os.path.splitext(file.filename)[0]
+
+    try:
+        # Save the uploaded file to the shared volume
+        input_path = f"/shared/{file.filename}"
+        p1080_path = f"/shared/1080p_{file.filename}"
+        p720_path = f"/shared/720p_{file.filename}"
+        p480_path = f"/shared/480p_{file.filename}"
+        zip_path = f"/shared/encoding_ladder_{filename_without_extension}.zip"
+
+        with open(input_path, "wb") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+        
+        # Run FFmpeg commands for each resolution
+        encoding_commands = [
+            (p1080_path, "scale=1920:1080"),
+            (p720_path, "scale=1280:720"),
+            (p480_path, "scale=854:480"),
+        ]
+
+        for output_path, scale in encoding_commands:
+            subprocess.run(
+                [
+                    "docker", "exec", "api-ffmpeg-docker-1",
+                    "ffmpeg", "-i", input_path,
+                    "-vf", scale, "-b:v", "500k",
+                    "-c:v", "libx264", "-preset", "faster", "-c:a",
+                    "aac", "-b:a", "128k", "-f", "mp4",
+                    output_path
+                ],
+                check=True
+            )
+
+        # Create a ZIP file containing all the encoded videos
+        with zipfile.ZipFile(zip_path, "w") as zipf:
+            zipf.write(p1080_path, arcname=f"1080p_{file.filename}")
+            zipf.write(p720_path, arcname=f"720p_{file.filename}")
+            zipf.write(p480_path, arcname=f"480p_{file.filename}")
+
+        return FileResponse(zip_path, media_type="application/zip", filename=f"encoding_ladder_{filename_without_extension}.zip")
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"FFmpeg error: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
